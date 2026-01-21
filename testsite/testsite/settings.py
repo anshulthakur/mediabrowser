@@ -16,32 +16,6 @@ DATABASES = {
 }
 
 LANGUAGE_CODE = 'en'
-LANGUAGES = (
-    ('bg', "Bulgarian"),
-    ('cs', "Czech"),
-    ('da', "Danish"),    
-    ('de', "German"),
-    ('es', "Spanish"),
-    ('fi', "Finnish"),
-    ('fr', "French"),
-    ('hr', "Croatian"),
-    ('hu', "Hungarian"),
-    ('it', "Italian"),
-    ('nl', "Dutch"),
-    ('no', "Norwegian"),
-    ('pl', "Polish"),
-    ('pt', "Portuguese"),
-    ('ro', "Romanian"),
-    ('ru', "Russian"),
-    ('sk', "Slovakian"),
-    ('sr', "Serbian"),
-    ('sv', "Swedish"),
-    ('tr', "Turkish"),
-    ('uk', "Ukrainian"),
-    ('zh', "Chinese"),
-)
-
-
 
 # Absolute filesystem path to the directory that will hold user-uploaded files.
 # Example: "/var/www/example.com/media/"
@@ -65,7 +39,7 @@ STATICFILES_FINDERS = (
 )
 
 
-MIDDLEWARE_CLASSES = (
+MIDDLEWARE = (
     'django.middleware.common.CommonMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -91,3 +65,5 @@ TEMPLATES = [
         'APP_DIRS': True,
     }
 ]
+
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'

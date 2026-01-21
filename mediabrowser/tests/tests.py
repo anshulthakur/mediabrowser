@@ -2,7 +2,7 @@ from django.test import TestCase, override_settings
 from django.test.client import Client
 from django.contrib.auth.models import User, Permission
 from django.conf import settings
-from django.core.urlresolvers import reverse
+from django.urls import reverse
 from PIL import Image
 
 from mediabrowser.models import Asset
@@ -16,12 +16,12 @@ IMAGE_ROOT = os.path.join(os.path.dirname(__file__), 'test-data')
 
 class AuthenticatedUserBaseTestCase(TestCase):
     def setUp(self):
-        user = User.objects.create_user("testuser", password="s3kret")
-        user.is_staff = True
-        user.save()
+        self.user = User.objects.create_user("testuser", password="s3kret")
+        self.user.is_staff = True
+        self.user.save()
         self.uploaded = []
         
-        self.client.login(username="testuser", password="s3kret")
+        self.client.force_login(self.user)
     
     def tearDown(self):
         for f in self.uploaded:
@@ -50,7 +50,7 @@ class FileBrowsingTestCase(AuthenticatedUserBaseTestCase):
         """ Tests that locale is activated by adding langCode get param. """
         url = reverse("mediabrowser-image-list") + "?langCode=ro"
         response = self.client.get(url)
-        self.assertIn('<html lang="ro">', response.content)
+        self.assertContains(response, '<html lang="ro">')
         
     
 
@@ -60,32 +60,32 @@ class FileUploadTestCase(AuthenticatedUserBaseTestCase):
     @override_settings(MEDIABROWSER_CHECK_USER_PERMISSIONS=None)
     def test_image_upload(self):
         filepath =  os.path.join(IMAGE_ROOT, '40x40.png')
-        with open(filepath) as fp:
+        with open(filepath, 'rb') as fp:
             response = self.client.post('/images/add/?type=Images&CKEditor=editor2&CKEditorFuncNum=2&langCode=de', {"file":fp})        
         filepath =  os.path.join(IMAGE_ROOT, '40x40.png')
-        self.assertTrue("asset" in response.context)
-        self.uploaded.append(response.context["asset"].file.path)
-        self.assertTrue("MEDIABROWSER.insertFile" in response.content, "Missing MEDIABROWSER.insertFile call in response")
+        self.assertTrue("asset" in response.context[-1])
+        self.uploaded.append(response.context[-1]["asset"].file.path)
+        self.assertContains(response, "MEDIABROWSER.insertFile", msg_prefix="Missing MEDIABROWSER.insertFile call in response")
     
     
     @override_settings(MEDIABROWSER_MAX_IMAGE_SIZE=(500,500), MEDIABROWSER_CHECK_USER_PERMISSIONS=None)
     def test_image_resizing(self):
         # 40x40.png should not be resized, it's small
         filepath =  os.path.join(IMAGE_ROOT, '40x40.png')
-        with open(filepath) as fp:
+        with open(filepath, 'rb') as fp:
             response = self.client.post('/images/add/?type=Images', {"file":fp})
         orig_img = Image.open(filepath)
-        uploaded_img = Image.open(response.context["asset"].file.path)
+        uploaded_img = Image.open(response.context[-1]["asset"].file.path)
         self.assertEqual(orig_img.size[0], uploaded_img.size[0])
         self.assertEqual(orig_img.size[1], uploaded_img.size[1])
         
         # 600x600.png should be resized to 500x500
         filepath =  os.path.join(IMAGE_ROOT, '600x600.png')
-        with open(filepath) as fp:
+        with open(filepath, 'rb') as fp:
             response = self.client.post('/images/add/?type=Images', {"file":fp})
-        asset = response.context["asset"]
+        asset = response.context[-1]["asset"]
         uploaded_img = Image.open(asset.file)
-        self.uploaded.append(response.context["asset"].file.path)
+        self.uploaded.append(response.context[-1]["asset"].file.path)
         
         self.assertEqual(500, asset.width)
         self.assertEqual(500, asset.height)
@@ -96,7 +96,7 @@ class FileUploadTestCase(AuthenticatedUserBaseTestCase):
 class AuthenticationTestCase(AuthenticatedUserBaseTestCase):
     def post_image(self):
         filepath =  os.path.join(IMAGE_ROOT, '40x40.png')
-        with open(filepath) as fp:
+        with open(filepath, 'rb') as fp:
             response = self.client.post('/images/add/?type=Images', {"file":fp})
         return response
     
@@ -119,7 +119,7 @@ class AuthenticationTestCase(AuthenticatedUserBaseTestCase):
         self.assertEqual(response.status_code, 200)
         
         # deleting an asset should result in 403 because user has no delete perm
-        asset = Asset.objects.all().order_by("-id")[0]
+        asset = response.context[-1]["asset"]
         url = reverse("mediabrowser-delete")
         response = self.client.post(url, {"asset_id":asset.id})
         self.assertEqual(response.status_code, 403)
@@ -138,7 +138,7 @@ class AuthenticationTestCase(AuthenticatedUserBaseTestCase):
         self.assertEqual(response.status_code, 200)
         
         # delete image
-        asset = Asset.objects.all().order_by("-id")[0]
+        asset = response.context[-1]["asset"]
         url = reverse("mediabrowser-delete")
         response = self.client.post(url, {"asset_id":asset.id})
         self.assertEqual(response.status_code, 200)
@@ -148,24 +148,21 @@ class AuthenticationTestCase(AuthenticatedUserBaseTestCase):
         """ Tests that with default user permissions upload and delete buttons are present. """
         upload_url = reverse("mediabrowser-add-image")
         response = self.client.get(reverse("mediabrowser-image-list"))
-        self.assertIn(upload_url, response.content)
-        self.assertIn('id="DeleteFile"', response.content)
+        self.assertContains(response, upload_url)
+        self.assertContains(response, 'id="DeleteFile"')
     
     @override_settings(MEDIABROWSER_CHECK_USER_PERMISSIONS=True, MEDIABROWSER_USER_PASSES_TEST=None)
-    def test_template_with_default_permissions(self):
+    def test_template_with_checked_permissions(self):
         """ Tests delete and upload links are only present if user has apropriate permissions. """
         upload_url = reverse("mediabrowser-add-image")
         
         # if user has no permission, delete and upload links should not be there
         response = self.client.get(reverse("mediabrowser-image-list"))
-        self.assertNotIn(upload_url, response.content)
-        self.assertNotIn('id="DeleteFile"', response.content)
+        self.assertNotContains(response, upload_url)
+        self.assertNotContains(response, 'id="DeleteFile"')
         
         # after updating permissions, both links should become visible
         self.update_user_perms("add_asset", "delete_asset")
         response = self.client.get(reverse("mediabrowser-image-list"))
-        self.assertIn(upload_url, response.content)
-        self.assertIn('id="DeleteFile"', response.content)
-        
-    
-    
+        self.assertContains(response, upload_url)
+        self.assertContains(response, 'id="DeleteFile"')
